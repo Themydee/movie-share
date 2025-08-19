@@ -3,9 +3,15 @@
 import { useState, ChangeEvent, FormEvent } from 'react';
 import axios from 'axios';
 import { AlertCircle } from 'lucide-react';
-import Link from 'next/link';
+import Link from 'next/link'; 
+import toast from 'react-hot-toast';
+import { useRouter } from 'next/navigation';
 
 export default function Register() {
+
+  const server_url = 'http://localhost:5000';
+  const router = useRouter();
+
   const [username, setUsername] = useState<string>('');
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
@@ -30,14 +36,22 @@ export default function Register() {
     }
 
     try {
-      await axios.post('/api/register', { username, email, password });
+      await axios.post(server_url + "/api/auth/create", { username, email, password });
       setError('');
-      alert('Registration successful! Please log in.');
+      toast.success('Registration successful! Redirecting to login...');
+      
+      // Clear fields
       setUsername('');
       setEmail('');
       setPassword('');
+
+      // Redirect after 2 seconds
+      setTimeout(() => {
+        router.push('/login');
+      }, 2000);
     } catch (err) {
       setError('Failed to register. Please try again.');
+      toast.error('Registration failed. Please check your details and try again.');
     } finally {
       setIsSubmitting(false);
     }

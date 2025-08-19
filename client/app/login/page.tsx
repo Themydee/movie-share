@@ -4,8 +4,13 @@ import { useState, ChangeEvent, FormEvent } from 'react';
 import axios from 'axios';
 import { AlertCircle } from 'lucide-react';
 import Link from 'next/link';
+import toast from 'react-hot-toast';
+
+import { useRouter } from 'next/navigation';
 
 export default function Login() {
+    const server_url = 'http://localhost:5000';
+  const router = useRouter();
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [error, setError] = useState<string>('');
@@ -29,13 +34,20 @@ export default function Login() {
     }
 
     try {
-      await axios.post('/api/login', { email, password });
+      await axios.post(server_url + '/api/auth/login', { email, password });
       setError('');
-      alert('Login successful!');
+      toast.success('Login successful! Redirecting to dashboard...');
+      // Clear fields
       setEmail('');
       setPassword('');
+
+      // Redirect after 2 seconds
+      setTimeout(() => {
+        router.push('/');
+      }, 2000);
     } catch (err) {
       setError('Failed to log in. Please check your credentials.');
+      toast.error('Login failed. Please check your credentials and try again.');
     } finally {
       setIsSubmitting(false);
     }
