@@ -70,23 +70,28 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
     if (!cleanEmail || !password) {
       res.status(400).json({
         success: false,
-        error: "Email and password are required",
+        error: 'Email and password are required',
       });
       return;
     }
 
     const user = await User.findOne({ email: cleanEmail });
     if (!user || !(await bcrypt.compare(password, user.password))) {
-      res.status(401).json({ error: "Invalid credentials" });
+      res.status(401).json({ success: false, error: 'Invalid credentials' });
       return;
     }
 
-    const token = jwt.sign({
-      userId: user.id,
-      email: user.email,
-    }, process.env.JWT_SECRET_KEY!,  {
-      expiresIn: "1h",
-    });
+    const token = jwt.sign(
+      { userId: user.id, email: user.email },
+      process.env.JWT_SECRET_KEY!,
+      { expiresIn: '1h' }
+    );
+
+    const refreshToken = jwt.sign(
+      { userId: user.id, email: user.email },
+      process.env.JWT_REFRESH_SECRET_KEY!,
+      { expiresIn: '7d' }
+    );
 
     res.status(200).json({
       success: true,
@@ -96,13 +101,49 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
         email: user.email,
       },
       token,
-      message: "Login successful",
-    })
+      refreshToken,
+      message: 'Login successful',
+    });
   } catch (error) {
-     if (error instanceof Error) {
+    if (error instanceof Error) {
       res.status(500).json({ success: false, error: error.message });
     } else {
-      res.status(500).json({ success: false, error: "Unknown error" });
+      res.status(500).json({ success: false, error: 'Unknown error' });
     }
+  }
+};
+
+
+export const refresh = async (req: Request, res: Response): Promise<void> => {
+  const { refreshToken } = req.body;
+  if (!refreshToken) {
+    res.status(400).json({ success: false, error: 'Refresh token is required' });
+    return;
+  }
+
+  try {
+    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET_KEY!) as {
+      userId: string;
+      email: string;
+    };
+    const user = await User.findOne({ id: decoded.userId, email: decoded.email });
+    if (!user) {
+      res.status(401).json({ success: false, error: 'Invalid refresh token' });
+      return;
+    }
+
+    const newToken = jwt.sign(
+      { userId: user.id, email: user.email },
+      process.env.JWT_SECRET_KEY!,
+      { expiresIn: '1h' }
+    );
+
+    res.status(200).json({
+      success: true,
+      accessToken: newToken,
+      message: 'Token refreshed successfully',
+    });
+  } catch (error) {
+    res.status(401).json({ success: false, error: 'Invalid or expired refresh token' });
   }
 };

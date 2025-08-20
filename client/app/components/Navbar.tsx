@@ -1,11 +1,15 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
 import { Menu, X } from 'lucide-react';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '../contexts/AuthContext'; // ✅ import context
 
 export default function Navbar() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const router = useRouter();
+  const { user, logout } = useAuth(); // ✅ access auth state
 
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen(!isMobileMenuOpen);
@@ -15,28 +19,62 @@ export default function Navbar() {
     setIsMobileMenuOpen(false);
   };
 
+  const handleLogout = () => {
+    logout(); // ✅ clear auth state + localStorage
+    router.push('/login');
+  };
+
   return (
     <nav className="bg-gray-800/95 p-4 sticky top-0 z-50 shadow-lg border-b border-accent/30">
       <div className="container mx-auto flex justify-between items-center">
         {/* Logo */}
-        <Link href="/" className="text-2xl font-extrabold text-white flex items-center" onClick={closeMobileMenu}>
+        <Link
+          href="/"
+          className="text-2xl font-extrabold text-white flex items-center"
+          onClick={closeMobileMenu}
+        >
           🎬 MovieShare
         </Link>
 
         {/* Desktop Menu */}
         <div className="hidden md:flex space-x-6">
-          <Link href="/" className="text-gray-300 hover:text-accent transition-colors" onClick={closeMobileMenu}>
+          <Link
+            href="/"
+            className="text-gray-300 hover:text-accent transition-colors"
+            onClick={closeMobileMenu}
+          >
             Home
           </Link>
-          <Link href="/add-movie" className="text-gray-300 hover:text-accent transition-colors" onClick={closeMobileMenu}>
+          <Link
+            href="/add-movie"
+            className="text-gray-300 hover:text-accent transition-colors"
+            onClick={closeMobileMenu}
+          >
             Add Movie
           </Link>
-          <Link href="/profile" className="text-gray-300 hover:text-accent transition-colors" onClick={closeMobileMenu}>
+          <Link
+            href="/profile"
+            className="text-gray-300 hover:text-accent transition-colors"
+            onClick={closeMobileMenu}
+          >
             Profile
           </Link>
-          <Link href="/login" className="text-gray-300 hover:text-accent transition-colors" onClick={closeMobileMenu}>
-            Login/Register
-          </Link>
+          {user ? (
+            <button
+              onClick={handleLogout}
+              className="text-gray-300 hover:text-red-400 transition-colors"
+            >
+              Logout
+            </button>
+          ) : (
+            <Link
+              href="/login"
+              className="text-gray-300 hover:text-accent transition-colors"
+              onClick={closeMobileMenu}
+            >
+              Login/Register
+            </Link>
+          )}
         </div>
 
         {/* Hamburger Button */}
@@ -53,27 +91,58 @@ export default function Navbar() {
 
       {/* Mobile Menu */}
       {isMobileMenuOpen && (
-        <div id="mobile-menu" className="md:hidden bg-gray-800/95 border-t border-accent/30 animate-slide-in">
+        <div
+          id="mobile-menu"
+          className="md:hidden bg-gray-800/95 border-t border-accent/30 animate-slide-in"
+        >
           <ul className="flex flex-col items-center py-4 space-y-4">
             <li>
-              <Link href="/" className="text-gray-300 hover:text-accent text-lg transition-colors" onClick={closeMobileMenu}>
+              <Link
+                href="/"
+                className="text-gray-300 hover:text-accent text-lg transition-colors"
+                onClick={closeMobileMenu}
+              >
                 Home
               </Link>
             </li>
             <li>
-              <Link href="/add-movie" className="text-gray-300 hover:text-accent text-lg transition-colors" onClick={closeMobileMenu}>
+              <Link
+                href="/add-movie"
+                className="text-gray-300 hover:text-accent text-lg transition-colors"
+                onClick={closeMobileMenu}
+              >
                 Add Movie
               </Link>
             </li>
             <li>
-              <Link href="/profile" className="text-gray-300 hover:text-accent text-lg transition-colors" onClick={closeMobileMenu}>
+              <Link
+                href="/profile"
+                className="text-gray-300 hover:text-accent text-lg transition-colors"
+                onClick={closeMobileMenu}
+              >
                 Profile
               </Link>
             </li>
             <li>
-              <Link href="/login" className="text-gray-300 hover:text-accent text-lg transition-colors" onClick={closeMobileMenu}>
-                Login/Register
-              </Link>
+              {user ? (
+                <button
+                  onClick={() => {
+                    handleLogout();
+                    closeMobileMenu();
+                  }}
+                  className="text-gray-300 hover:text-red-400 text-lg transition-colors"
+                >
+                  Logout
+                </button>
+              ) : (
+                <Link
+                  href="/login"
+                  className="text-gray-300 hover:text-accent text-lg transition-colors"
+                  onClick={closeMobileMenu}
+                >
+                  Login/Register
+                </Link>
+              )}
             </li>
           </ul>
         </div>

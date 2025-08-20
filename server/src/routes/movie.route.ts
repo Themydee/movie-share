@@ -1,15 +1,25 @@
-import express from 'express'
+import express from 'express';
+import { addMovie, getMovie, getSingleMovie, getUserMovie } from '../controllers/movie.controller';
+import { auth } from '../middleware/auth';
+import { upload } from '../middleware/multer';
 
-import { addMovie, getMovie, getSingleMovie } from '../controllers/movie.controller'
-import { auth } from '../middleware/auth'
-import { upload } from '../middleware/multer'
-const router = express.Router()
+const router = express.Router();
 
-router.post("/add", auth, upload.fields([{ name: 'poster', maxCount: 1}, { name: 'movieFile', maxCount: 1}]), addMovie)
+// Upload movie (protected)
+router.post(
+  "/add",
+  auth,
+  upload.fields([{ name: 'poster', maxCount: 1 }, { name: 'movieFile', maxCount: 1 }]),
+  addMovie
+);
 
-router.get("/get", auth, getMovie)
+// Fetch all movies (public)
+router.get("/get", getMovie);
 
-router.get("/get/:id", auth, getSingleMovie)
+// Fetch single movie by ID (public)
+router.get("/get/:id", getSingleMovie);
 
+// Fetch movies by user (protected)
+router.get("/user/:userId", auth, getUserMovie);
 
 export default router;

@@ -1,9 +1,13 @@
+// app/add-movie/page.tsx
 'use client';
 
 import { useState, FormEvent } from 'react';
 import axios from 'axios';
 import Image from 'next/image';
 import { AlertCircle } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function AddMovie() {
   const [title, setTitle] = useState<string>('');
@@ -18,7 +22,14 @@ export default function AddMovie() {
   const [error, setError] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, setFile: (file: File | null) => void) => {
+  const server_url = 'http://localhost:5000';
+  const router = useRouter();
+  const { token, refreshToken } = useAuth();
+
+  const handleFileChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    setFile: (file: File | null) => void
+  ) => {
     const file = e.target.files?.[0] || null;
     setFile(file);
     if (file && file.type.startsWith('image/')) {
@@ -44,16 +55,69 @@ export default function AddMovie() {
       return;
     }
 
-    if (trailerUrl && !/^(https?:\/\/)?(www\.)?(youtube\.com|vimeo\.com)\/.+$/.test(trailerUrl)) {
+    if (
+      trailerUrl &&
+      !/^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/|vimeo\.com\/).+/.test(trailerUrl)
+    ) {
       setError('Please enter a valid YouTube or Vimeo URL for the trailer.');
       setIsSubmitting(false);
       return;
     }
 
+    if (!token) {
+      setError('Please log in to upload a movie.');
+      setIsSubmitting(false);
+      router.push('/login');
+      return;
+    }
+
+    let authToken = token;
+    try {
+      // Validate token format
+      if (typeof token !== 'string' || !token.includes('.') || token.split('.').length !== 3) {
+        console.error('Invalid token format:', token);
+        throw new Error('Invalid token format');
+      }
+
+      let decodedPayload;
+      try {
+        const payload = token.split('.')[1];
+        decodedPayload = JSON.parse(atob(payload));
+      } catch (err) {
+        console.error('Failed to decode token payload:', err, 'Token:', token);
+        throw new Error('Failed to decode token payload');
+      }
+
+      if (!decodedPayload.exp) {
+        console.error('Token payload missing exp:', decodedPayload);
+        throw new Error('Token payload missing expiration');
+      }
+
+      console.log('Token expiration:', new Date(decodedPayload.exp * 1000), 'Current time:', new Date());
+      if (decodedPayload.exp * 1000 < Date.now()) {
+        console.log('Attempting token refresh...');
+        authToken = await refreshToken();
+        if (!authToken) {
+          console.error('Refresh token failed, no new token returned');
+          setError('Session expired. Please log in again.');
+          setIsSubmitting(false);
+          router.push('/login');
+          return;
+        }
+        console.log('New token obtained:', authToken);
+      }
+    } catch (err: any) {
+      console.error('Token validation failed:', err.message);
+      setError('Invalid or corrupted token. Please log in again.');
+      setIsSubmitting(false);
+      router.push('/login');
+      return;
+    }
+
     const formData = new FormData();
     formData.append('title', title);
-    formData.append('poster', poster);
-    formData.append('movieFile', movieFile);
+    formData.append('poster', poster as File);
+    formData.append('movieFile', movieFile as File);
     formData.append('genres', JSON.stringify(genres));
     formData.append('year', year.toString());
     formData.append('rating', rating.toString());
@@ -61,11 +125,14 @@ export default function AddMovie() {
     formData.append('trailerUrl', trailerUrl);
 
     try {
-      await axios.post('/api/movies', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      const response = await axios.post(`${server_url}/api/movies/add`, formData, {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+          'Content-Type': 'multipart/form-data',
+        },
       });
-      setError('');
-      alert('Movie uploaded successfully!');
+
+      toast.success(response.data.message || 'Movie uploaded successfully!');
       setTitle('');
       setPoster(null);
       setPosterPreview(null);
@@ -75,45 +142,56 @@ export default function AddMovie() {
       setRating(5);
       setReview('');
       setTrailerUrl('');
-    } catch (err) {
-      setError('Failed to upload movie. Please try again.');
+      setTimeout(() => {
+        router.push('/');
+      }, 2000);
+    } catch (err: any) {
+      console.error('Upload failed:', err.response?.data, err.response?.status);
+      const errorMessage =
+        err.response?.data?.message || 'Failed to upload movie. Please try again.';
+      setError(errorMessage);
+      toast.error(errorMessage);
+      if (err.response?.status === 401) {
+        router.push('/login');
+      }
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Get YouTube/Vimeo thumbnail or fallback
   const getTrailerThumbnail = (url: string): string => {
-    if (url.includes('youtube.com')) {
-      const videoId = url.split('v=')[1]?.split('&')[0];
+    try {
+      let videoId: string | null = null;
+      if (url.includes('youtube.com/watch')) {
+        const urlObj = new URL(url);
+        videoId = urlObj.searchParams.get('v');
+      } else if (url.includes('youtu.be')) {
+        videoId = url.split('youtu.be/')[1]?.split('?')[0];
+      }
       if (videoId) {
         return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
       }
-    } else if (url.includes('vimeo.com')) {
-      // Vimeo requires API call; using placeholder for simplicity
-      return 'https://via.placeholder.com/300x169?text=Vimeo+Thumbnail';
+      if (url.includes('vimeo.com')) {
+        return 'https://via.placeholder.com/300x169?text=Vimeo+Thumbnail';
+      }
+      return 'https://via.placeholder.com/300x169?text=Invalid+Trailer+URL';
+    } catch {
+      return 'https://via.placeholder.com/300x169?text=Invalid+Trailer+URL';
     }
-    return 'https://via.placeholder.com/300x169?text=Invalid+Trailer+URL';
   };
 
   return (
     <div className="relative container mx-auto p-4 max-w-2xl min-h-screen">
-      {/* Blurred backdrop */}
       <div className="absolute inset-0 -z-10 bg-gray-900/80"></div>
-
-      {/* Form card */}
       <div className="bg-gray-800/90 rounded-xl shadow-2xl p-6 animate-fade-in border border-accent/30">
         <h1 className="text-3xl font-extrabold text-white mb-6 text-center">Add a Movie</h1>
-
         {error && (
           <div className="flex items-center gap-2 bg-red-500/20 text-red-400 p-3 rounded-lg mb-6 animate-fade-in">
             <AlertCircle size={20} />
             <p>{error}</p>
           </div>
         )}
-
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Title and Year */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-300">Title *</label>
@@ -123,7 +201,6 @@ export default function AddMovie() {
                 onChange={(e) => setTitle(e.target.value)}
                 className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-accent text-white"
                 required
-                aria-required="true"
                 placeholder="Enter movie title"
               />
             </div>
@@ -137,13 +214,10 @@ export default function AddMovie() {
                 max={new Date().getFullYear()}
                 className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-accent text-white"
                 required
-                aria-required="true"
                 placeholder="e.g., 2023"
               />
             </div>
           </div>
-
-          {/* File Uploads */}
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-300">Poster Image *</label>
@@ -153,7 +227,6 @@ export default function AddMovie() {
                 onChange={(e) => handleFileChange(e, setPoster)}
                 className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-accent file:text-white file:cursor-pointer"
                 required
-                aria-required="true"
               />
               {posterPreview && (
                 <div className="mt-4">
@@ -175,12 +248,9 @@ export default function AddMovie() {
                 onChange={(e) => handleFileChange(e, setMovieFile)}
                 className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-accent file:text-white file:cursor-pointer"
                 required
-                aria-required="true"
               />
             </div>
           </div>
-
-          {/* Trailer URL */}
           <div>
             <label className="block text-sm font-medium text-gray-300">Trailer URL (YouTube/Vimeo)</label>
             <input
@@ -202,8 +272,6 @@ export default function AddMovie() {
               </div>
             )}
           </div>
-
-          {/* Genres */}
           <div>
             <label className="block text-sm font-medium text-gray-300">Genres *</label>
             <select
@@ -212,7 +280,6 @@ export default function AddMovie() {
               onChange={handleGenreChange}
               className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-accent text-white"
               required
-              aria-required="true"
             >
               <option value="Action">Action</option>
               <option value="Comedy">Comedy</option>
@@ -221,10 +288,7 @@ export default function AddMovie() {
               <option value="Horror">Horror</option>
               <option value="Romance">Romance</option>
             </select>
-            <p className="text-xs text-gray-400 mt-1">Hold Ctrl (Windows) or Cmd (Mac) to select multiple genres</p>
           </div>
-
-          {/* Rating */}
           <div>
             <label className="block text-sm font-medium text-gray-300">Rating (1-10) *</label>
             <input
@@ -235,12 +299,9 @@ export default function AddMovie() {
               onChange={(e) => setRating(parseInt(e.target.value) || 1)}
               className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-accent text-white"
               required
-              aria-required="true"
               placeholder="e.g., 8"
             />
           </div>
-
-          {/* Review */}
           <div>
             <label className="block text-sm font-medium text-gray-300">Personal Review *</label>
             <textarea
@@ -248,19 +309,15 @@ export default function AddMovie() {
               onChange={(e) => setReview(e.target.value)}
               className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg h-32 focus:outline-none focus:ring-2 focus:ring-accent text-white"
               required
-              aria-required="true"
               placeholder="Write your review..."
             />
           </div>
-
-          {/* Submit Button */}
           <button
             type="submit"
             disabled={isSubmitting}
             className={`w-full bg-accent text-white p-3 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-accent ${
               isSubmitting ? 'opacity-50 cursor-not-allowed' : 'hover:bg-accent/80'
             }`}
-            aria-label="Submit movie"
           >
             {isSubmitting ? 'Uploading...' : 'Submit'}
           </button>
